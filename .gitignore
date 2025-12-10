@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+.env
+venv/
+.venv/
+
+# VSCode e IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Julia
+*.ji
+*.jl.cov
+*.jl.tmp
+.julia/
+
+# Bytecode / compiled
+*.o
+*.out
+*.exe
+*.dll
+*.obj
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Ignore temporary files
+*.tmp
+*.bak
+*.swp
