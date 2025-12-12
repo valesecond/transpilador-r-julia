@@ -21,7 +21,7 @@ tokens = (
     'LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'LBRACK', 'RBRACK', 'COMMA', 'SEMICOLON', 'COLON',
     'AND', 'OR', 'NOT',
     'NEWLINE',
-    'DOLLAR'
+    'DOLLAR', 'BACKTICK'
 ) + tuple(reserved.values())
 
 # Arithmetic operators
@@ -54,6 +54,7 @@ t_COMMA = r','
 t_SEMICOLON = r';'
 t_COLON = r':'
 t_DOLLAR = r'\$' 
+t_BACKTICK = r'`'
 
 # Logical operators
 t_AND = r'\&\&'
@@ -67,6 +68,12 @@ t_ignore = ' \t\r'
 def t_FLOAT_LITERAL(t):
     r'\d+\.\d+([eE][+-]?\d+)?'
     t.value = float(t.value)
+    return t
+
+def t_CR_ID(t):
+    r'`[^`]+`'
+    t.value = t.value  # mantém o literal com crase ou remove crases se quiser
+    t.type = 'ID'
     return t
 
 # INT com sufixo opcional L (42 ou 42L)

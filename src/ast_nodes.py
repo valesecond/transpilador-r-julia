@@ -9,6 +9,17 @@ class IsInteger(Node):
     def __init__(self, expr):
         self.expr = expr
 
+class DollarAccess(Node):
+    def __init__(self, target, field):
+        self.target = target  
+        self.field = field     
+
+class S3FunctionDecl(Node):
+    def __init__(self, operator_name, class_name, params, body):
+        self.operator_name = operator_name  # Ex: "+"
+        self.class_name = class_name        # Ex: "myclass"
+        self.params = params                # lista de parâmetros
+        self.body = body                    # bloco da função
 
 class Program(Node):
     def __init__(self, stmts):
