@@ -211,19 +211,47 @@ class JuliaCodeGen:
 
     # ------------------- CONTROL FLOW -------------------
     def gen_If(self, node):
-        out = [f"if {self.generate(node.cond)}",
-               self.gen_Block(node.then_block)]
+        # Detecta else if (else cujo bloco é um único If)
+        if node.else_block and len(node.else_block.stmts) == 1 and isinstance(node.else_block.stmts[0], If):
+            inner_if = node.else_block.stmts[0]
+            return "\n".join([
+                f"if {self.generate(node.cond)}",
+                self.gen_Block(node.then_block),
+                f"elseif {self.generate(inner_if.cond)}",
+                self.gen_Block(inner_if.then_block),
+                "else",
+                self.gen_Block(inner_if.else_block),
+                "end"
+            ])
+
+        # if normal
+        out = [
+            f"if {self.generate(node.cond)}",
+            self.gen_Block(node.then_block)
+        ]
+
         if node.else_block:
             out += ["else", self.gen_Block(node.else_block)]
+
         out.append("end")
         return "\n".join(out)
 
     def gen_While(self, node):
+        cond = self.generate(node.cond)
+
+        self.indent_level += 1
+        body = self.gen_Block(node.body)
+        self.indent_level -= 1
+
+        indent = "    " * (self.indent_level + 1)
+
         return "\n".join([
-            f"while {self.generate(node.cond)}",
-            self.gen_Block(node.body),
+            f"while {cond}",
+            f"{indent}global x",
+            body,
             "end"
         ])
+
 
     def gen_For(self, node):
         if node.start_expr is not None:
