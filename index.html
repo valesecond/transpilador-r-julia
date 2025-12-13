@@ -1,0 +1,2241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transpilador R → Julia</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #6c3fb5;
+            --secondary-color: #e91e63;
+            --bg-dark: #1e1e2e;
+            --bg-darker: #16213e;
+            --text-light: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --border-color: #3a3f47;
+            --success-color: #4caf50;
+            --error-color: #f44336;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
+            color: var(--text-light);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 0;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: var(--text-muted);
+        }
+
+        /* Editor Container */
+        .editor-container {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            margin-bottom: 40px;
+            align-items: center;
+        }
+
+        .editor-panel {
+            background: var(--bg-dark);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 500px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .panel-header h2 {
+            font-size: 1.1em;
+            margin: 0;
+        }
+
+        textarea,
+        pre {
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 15px;
+            border: none;
+            resize: none;
+            background: var(--bg-dark);
+            color: var(--text-light);
+        }
+
+        textarea {
+            background: var(--bg-dark);
+        }
+
+        textarea::placeholder {
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+
+        pre {
+            margin: 0;
+            overflow: auto;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        /* Arrow Container */
+        .arrow-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .btn-transpile {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 4px 15px rgba(108, 63, 181, 0.4);
+        }
+
+        .btn-transpile:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(108, 63, 181, 0.6);
+        }
+
+        .btn-transpile:active {
+            transform: scale(0.95);
+        }
+
+        .btn-transpile.loading {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Buttons */
+        .btn-small {
+            padding: 6px 12px;
+            background: rgba(108, 63, 181, 0.2);
+            border: 1px solid var(--primary-color);
+            color: var(--primary-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+
+        .btn-small:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-load-example {
+            padding: 8px 16px;
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn-load-example:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+        }
+
+        /* Error Message */
+        .error-message {
+            background: rgba(244, 67, 54, 0.1);
+            border: 2px solid var(--error-color);
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #ff6b6b;
+            display: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+
+        .error-message.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Examples Section */
+        .examples-section {
+            background: rgba(108, 63, 181, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .examples-section h3 {
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }
+
+        .examples-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .example-card {
+            background: var(--bg-dark);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 15px;
+            transition: all 0.3s;
+        }
+
+        .example-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 15px rgba(108, 63, 181, 0.2);
+        }
+
+        .example-card h4 {
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+
+        .example-card code {
+            display: block;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-bottom: 10px;
+            color: var(--text-light);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Info Section */
+        .info-section {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+        }
+
+        .info-section h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .info-section ul {
+            list-style: none;
+            margin-bottom: 15px;
+        }
+
+        .info-section li {
+            padding: 8px 0;
+            margin-left: 20px;
+        }
+
+        .info-section .note {
+            background: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid #ff9800;
+            padding: 12px;
+            border-radius: 4px;
+            margin-top: 15px;
+            color: #ffb74d;
+        }
+
+        /* Documentation Section */
+        .documentation-section {
+            background: rgba(108, 63, 181, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+
+        .documentation-section h2 {
+            margin-bottom: 25px;
+            font-size: 1.8em;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .doc-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .doc-tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 0.95em;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .doc-tab-btn:hover {
+            color: var(--text-light);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .doc-tab-btn.active {
+            color: var(--secondary-color);
+            border-bottom-color: var(--secondary-color);
+        }
+
+        .doc-tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .doc-tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .documentation-section h3 {
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+            color: var(--secondary-color);
+        }
+
+        .documentation-section h4 {
+            margin-top: 15px;
+            margin-bottom: 10px;
+            color: var(--text-light);
+            font-size: 1.1em;
+        }
+
+        .documentation-section p {
+            margin-bottom: 12px;
+            line-height: 1.7;
+            color: var(--text-light);
+        }
+
+        .process-diagram {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 6px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .phase {
+            background: rgba(108, 63, 181, 0.3);
+            padding: 15px 20px;
+            border-radius: 6px;
+            text-align: center;
+            flex: 1;
+            min-width: 150px;
+            border: 1px solid var(--primary-color);
+        }
+
+        .arrow {
+            font-size: 1.5em;
+            color: var(--secondary-color);
+            margin: 0 10px;
+        }
+
+        .token-table,
+        .precedence-table,
+        .mapping-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .token-table thead,
+        .precedence-table thead,
+        .mapping-table thead {
+            background: rgba(108, 63, 181, 0.3);
+        }
+
+        .token-table th,
+        .precedence-table th,
+        .mapping-table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--secondary-color);
+        }
+
+        .token-table td,
+        .precedence-table td,
+        .mapping-table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .token-table tbody tr:hover,
+        .precedence-table tbody tr:hover,
+        .mapping-table tbody tr:hover {
+            background: rgba(108, 63, 181, 0.1);
+        }
+
+        .token-table code,
+        .mapping-table code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #4caf50;
+            font-size: 0.9em;
+        }
+
+        .documentation-section pre {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            color: #4caf50;
+        }
+
+        .documentation-section code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .regex,
+        .grammar {
+            color: #ffb74d;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .editor-container {
+                grid-template-columns: 1fr;
+            }
+
+            .arrow-container {
+                transform: rotate(90deg);
+                margin: 10px 0;
+            }
+
+            header h1 {
+                font-size: 2em;
+            }
+
+            .editor-panel {
+                height: 400px;
+            }
+
+            .examples-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 10px;
+            }
+
+            header h1 {
+                font-size: 1.5em;
+            }
+
+            .panel-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+
+            .editor-panel {
+                height: 300px;
+            }
+
+            textarea,
+            pre {
+                font-size: 12px;
+                padding: 10px;
+            }
+
+            .btn-transpile {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
+            .examples-section,
+            .info-section {
+                padding: 20px;
+            }
+
+            header h2,
+            .examples-section h3,
+            .info-section h3 {
+                font-size: 1.1em;
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-color);
+        }
+
+        /* Code highlighting */
+        .hljs {
+            background: var(--bg-dark) !important;
+            color: var(--text-light) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔄 Transpilador R → Julia</h1>
+            <p class="subtitle">Converta código R para Julia instantaneamente</p>
+        </header>
+
+        <div class="editor-container">
+            <!-- R Code Editor -->
+            <div class="editor-panel">
+                <div class="panel-header">
+                    <h2>📝 Código R</h2>
+                    <button id="clearRBtn" class="btn-small">Limpar</button>
+                </div>
+                <textarea id="rCode" placeholder="Digite seu código R aqui...
+Exemplo:
+x <- 5
+y <- 10
+resultado <- x + y"></textarea>
+            </div>
+
+            <!-- Arrow Button -->
+            <div class="arrow-container">
+                <button id="transpileBtn" class="btn-transpile" title="Transpilar código">
+                    <span>⚡</span>
+                </button>
+            </div>
+
+            <!-- Julia Code Editor -->
+            <div class="editor-panel">
+                <div class="panel-header">
+                    <h2>💜 Código Julia</h2>
+                    <button id="copyJuliaBtn" class="btn-small">Copiar</button>
+                </div>
+                <pre><code id="juliaCode">Clique em ⚡ para transpilar seu código R</code></pre>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+        <!-- Examples Section -->
+        <section class="examples-section">
+            <h3>📚 Exemplos</h3>
+            
+            <!-- Apresentação Examples -->
+            <h4 style="margin-top: 30px; margin-bottom: 15px; color: #6c3fb5;">🎓 Apresentação</h4>
+            <div class="examples-grid">
+                <div class="example-card">
+                    <h4>Operações Básicas</h4>
+                    <code>x <- 5
+y <- 10
+z <- x + y</code>
+                    <button class="btn-load-example" data-code="x <- 5&#10;y <- 10&#10;z <- x + y">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Vetores</h4>
+                    <code>v <- c(1, 2, 3, 4, 5)
+media <- mean(v)
+soma <- sum(v)</code>
+                    <button class="btn-load-example" data-code="v <- c(1, 2, 3, 4, 5)&#10;media <- mean(v)&#10;soma <- sum(v)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Funções</h4>
+                    <code>quadrado <- function(x) {
+  return(x * x)
+}
+resultado <- quadrado(5)</code>
+                    <button class="btn-load-example" data-code="quadrado <- function(x) {&#10;  return(x * x)&#10;}&#10;resultado <- quadrado(5)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Loops</h4>
+                    <code>for (i in 1:10) {
+  print(i)
+}
+j <- 1
+while (j <= 5) {
+  j <- j + 1
+}</code>
+                    <button class="btn-load-example" data-code="for (i in 1:10) {&#10;  print(i)&#10;}&#10;j <- 1&#10;while (j <= 5) {&#10;  j <- j + 1&#10;}">Carregar</button>
+                </div>
+            </div>
+
+            <!-- Unidade 1 Examples -->
+            <h4 style="margin-top: 30px; margin-bottom: 15px; color: #e91e63;">📖 Unidade 1</h4>
+            <div class="examples-grid">
+                <div class="example-card">
+                    <h4>01_tipos_dados</h4>
+                    <code>x_num <- 3.14
+x_int <- 42L
+x_chr <- "texto"
+x_log <- TRUE
+
+v <- c(1, 2, 3)
+m <- matrix(1:6, nrow=2)
+l <- list(nome="Ana")
+df <- data.frame(nome=c("Ana"))</code>
+                    <button class="btn-load-example" data-code="x_num <- 3.14&#10;x_int <- 42L&#10;x_chr <- &quot;texto&quot;&#10;x_log <- TRUE&#10;&#10;v <- c(1, 2, 3)&#10;m <- matrix(1:6, nrow=2)&#10;l <- list(nome=&quot;Ana&quot;, idade=21)&#10;df <- data.frame(nome=c(&quot;Ana&quot;, &quot;Beto&quot;))">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>02_formato_tipos</h4>
+                    <code>is.double(3.14)
+is.integer(2L)
+
+v <- c(10, 20, 30)
+
+v["nome"] <- 5
+print(v)</code>
+                    <button class="btn-load-example" data-code="is.double(3.14)&#10;is.integer(2L)&#10;&#10;v <- c(10, 20, 30)&#10;&#10;v[&quot;nome&quot;] <- 5&#10;print(v)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>03_referencias</h4>
+                    <code>env <- new.env()
+env$x <- 10
+
+f <- function(e) {
+  e$x <- e$x + 1
+}
+
+f(env)
+env$x</code>
+                    <button class="btn-load-example" data-code="env <- new.env()&#10;env$x <- 10&#10;&#10;f <- function(e) {&#10;  e$x <- e$x + 1&#10;}&#10;&#10;f(env)&#10;env$x">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>04_palavras_reservadas</h4>
+                    <code>if (TRUE) print("ok")</code>
+                    <button class="btn-load-example" data-code="if (TRUE) print(&quot;ok&quot;)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>05_variaveis_escopo</h4>
+                    <code>x_global <- 10
+
+f <- function() {
+  x_local <- 5
+  return(x_local)
+}
+
+f()</code>
+                    <button class="btn-load-example" data-code="x_global <- 10&#10;&#10;f <- function() {&#10;  x_local <- 5&#10;  return(x_local)&#10;}&#10;&#10;f()">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>06_expressoes_operadores</h4>
+                    <code>resultado1 <- 2 + 3 * 4
+resultado2 <- (2 + 3) * 4
+
+a <- TRUE
+b <- FALSE
+c <- a && b
+d <- a || b</code>
+                    <button class="btn-load-example" data-code="resultado1 <- 2 + 3 * 4&#10;resultado2 <- (2 + 3) * 4&#10;&#10;a <- TRUE&#10;b <- FALSE&#10;c <- a && b&#10;d <- a || b&#10;e <- !a">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>07_estruturas_controle</h4>
+                    <code>if (x > 0) {
+  print("positivo")
+} else if (x == 0) {
+  print("zero")
+} else {
+  print("negativo")
+}</code>
+                    <button class="btn-load-example" data-code="x <- 5&#10;&#10;if (x > 0) {&#10;  print(&quot;positivo&quot;)&#10;} else if (x == 0) {&#10;  print(&quot;zero&quot;)&#10;} else {&#10;  print(&quot;negativo&quot;)&#10;}&#10;&#10;for (i in 5:1) {&#10;  if (i == 3) print(&quot;três&quot;)&#10;}">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>08_comandos_repeticao</h4>
+                    <code>for (i in 1:3) {
+  print(i)
+}
+
+i <- 1
+while (i <= 3) {
+  print(i)
+  i <- i + 1
+}</code>
+                    <button class="btn-load-example" data-code="for (i in 1:3) {&#10;  print(i)&#10;}&#10;&#10;i <- 1&#10;while (i <= 3) {&#10;  print(i)&#10;  i <- i + 1&#10;}">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>09_comandos_condicionais</h4>
+                    <code>nota <- 7
+
+if (nota >= 9) {
+  print("Excelente")
+} else if (nota >= 7) {
+  print("Bom")
+} else {
+  print("Insuficiente")
+}</code>
+                    <button class="btn-load-example" data-code="nota <- 7&#10;&#10;if (nota >= 9) {&#10;  print(&quot;Excelente&quot;)&#10;} else if (nota >= 7) {&#10;  print(&quot;Bom&quot;)&#10;} else if (nota >= 5) {&#10;  print(&quot;Regular&quot;)&#10;} else {&#10;  print(&quot;Insuficiente&quot;)&#10;}&#10;&#10;x <- 10&#10;if (x > 5) {&#10;  print(&quot;maior que 5&quot;)&#10;} else {&#10;  print(&quot;menor ou igual a 5&quot;)&#10;}">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>10_funcoes</h4>
+                    <code>soma <- function(a, b) {
+  return(a + b)
+}
+print(soma(5, 3))
+
+quadrado <- function(x) x^2
+print(quadrado(4))
+
+calcular <- function(x, y) {
+  result <- x * y + 10
+  return(result)
+}
+print(calcular(3, 4))</code>
+                    <button class="btn-load-example" data-code="soma <- function(a, b) {&#10;  return(a + b)&#10;}&#10;print(soma(5, 3))&#10;&#10;quadrado <- function(x) x^2&#10;print(quadrado(4))&#10;&#10;calcular <- function(x, y) {&#10;  result <- x * y + 10&#10;  return(result)&#10;}&#10;print(calcular(3, 4))&#10;&#10;criar_vetor <- function(n) {&#10;  v <- c(1, 2, 3, 4, 5)&#10;  return(v)&#10;}&#10;print(criar_vetor(5))">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>11_concorrencia</h4>
+                    <code>calculo <- function(x) {
+  return(x^2)
+}
+
+valores <- c(1, 2, 3, 4)
+resultado <- c(calculo(1), calculo(2), calculo(3), calculo(4))
+print(resultado)
+
+processar <- function(x) {
+  dobro <- x * 2
+  quadrado <- x^2
+  soma <- dobro + quadrado
+  return(soma)
+}
+
+valores2 <- c(1, 2, 3)
+resultado2 <- c(processar(1), processar(2), processar(3))
+print(resultado2)</code>
+                    <button class="btn-load-example" data-code="calculo <- function(x) {&#10;  return(x^2)&#10;}&#10;&#10;valores <- c(1, 2, 3, 4)&#10;resultado <- c(calculo(1), calculo(2), calculo(3), calculo(4))&#10;print(resultado)&#10;&#10;processar <- function(x) {&#10;  dobro <- x * 2&#10;  quadrado <- x^2&#10;  soma <- dobro + quadrado&#10;  return(soma)&#10;}&#10;&#10;valores2 <- c(1, 2, 3)&#10;resultado2 <- c(processar(1), processar(2), processar(3))&#10;print(resultado2)&#10;&#10;v <- c(1, 2, 3, 4, 5)&#10;dobrados <- v * 2&#10;print(dobrados)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>12_excecoes</h4>
+                    <code>divisao <- function(a, b) {
+  if (b == 0) {
+    print("Erro: divisão por zero")
+    return(NA)
+  }
+  return(a / b)
+}
+
+resultado1 <- divisao(10, 2)
+print(resultado1)
+
+resultado2 <- divisao(5, 0)
+print(resultado2)
+
+potencia <- function(base, exp) {
+  if (exp < 0) {
+    print("Aviso: expoente negativo")
+    return(NA)
+  }
+  return(base ^ exp)
+}
+
+resultado3 <- potencia(2, 3)
+print(resultado3)</code>
+                    <button class="btn-load-example" data-code="divisao <- function(a, b) {&#10;  if (b == 0) {&#10;    print(&quot;Erro: divisão por zero&quot;)&#10;    return(NA)&#10;  }&#10;  return(a / b)&#10;}&#10;&#10;resultado1 <- divisao(10, 2)&#10;print(resultado1)&#10;&#10;resultado2 <- divisao(5, 0)&#10;print(resultado2)&#10;&#10;potencia <- function(base, exp) {&#10;  if (exp < 0) {&#10;    print(&quot;Aviso: expoente negativo&quot;)&#10;    return(NA)&#10;  }&#10;  return(base ^ exp)&#10;}&#10;&#10;resultado3 <- potencia(2, 3)&#10;print(resultado3)&#10;&#10;resultado4 <- potencia(2, -1)&#10;print(resultado4)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>13_eventos</h4>
+                    <code>processar_clique <- function(nome) {
+  mensagem <- paste("Olá,", nome, "! Você clicou no botão!")
+  return(mensagem)
+}
+
+resultado1 <- processar_clique("Paulo")
+print(resultado1)
+
+validar_entrada <- function(texto) {
+  if (nchar(texto) == 0) {
+    return("Digite algo válido")
+  }
+  return(paste("Você digitou:", texto))
+}
+
+mensagem1 <- validar_entrada("teste")
+print(mensagem1)
+
+responder_evento <- function(tipo, valor) {
+  if (tipo == "clique") {
+    return(paste("Botão clicado com valor:", valor))
+  } else if (tipo == "entrada") {
+    return(paste("Entrada recebida:", valor))
+  }
+  return("Evento desconhecido")
+}</code>
+                    <button class="btn-load-example" data-code="processar_clique <- function(nome) {&#10;  mensagem <- paste(&quot;Olá,&quot;, nome, &quot;! Você clicou no botão!&quot;)&#10;  return(mensagem)&#10;}&#10;&#10;resultado1 <- processar_clique(&quot;Paulo&quot;)&#10;print(resultado1)&#10;&#10;resultado2 <- processar_clique(&quot;Maria&quot;)&#10;print(resultado2)&#10;&#10;validar_entrada <- function(texto) {&#10;  if (nchar(texto) == 0) {&#10;    return(&quot;Digite algo válido&quot;)&#10;  }&#10;  return(paste(&quot;Você digitou:&quot;, texto))&#10;}&#10;&#10;mensagem1 <- validar_entrada(&quot;teste&quot;)&#10;print(mensagem1)&#10;&#10;responder_evento <- function(tipo, valor) {&#10;  if (tipo == &quot;clique&quot;) {&#10;    return(paste(&quot;Botão clicado com valor:&quot;, valor))&#10;  } else if (tipo == &quot;entrada&quot;) {&#10;    return(paste(&quot;Entrada recebida:&quot;, valor))&#10;  }&#10;  return(&quot;Evento desconhecido&quot;)&#10;}&#10;&#10;evento1 <- responder_evento(&quot;clique&quot;, &quot;btn1&quot;)&#10;print(evento1)&#10;&#10;evento2 <- responder_evento(&quot;entrada&quot;, &quot;dados&quot;)&#10;print(evento2)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>14_legibilidade</h4>
+                    <code>valores <- c(1, 2, 3)
+dobro_valores <- valores * 2
+print(dobro_valores)
+
+calcular_media_movel <- function(vetor, janela) {
+  soma <- sum(vetor)
+  tamanho <- length(vetor)
+  media <- soma / tamanho
+  return(media)
+}
+
+dados <- c(10, 20, 30, 40, 50)
+resultado <- calcular_media_movel(dados, 2)
+print(resultado)</code>
+                    <button class="btn-load-example" data-code="x <- c(1, 2, 3)&#10;y <- x * 2&#10;print(y)&#10;&#10;valores <- c(1, 2, 3)&#10;dobro_valores <- valores * 2&#10;print(dobro_valores)&#10;&#10;calcular_media_movel <- function(vetor, janela) {&#10;  soma <- sum(vetor)&#10;  tamanho <- length(vetor)&#10;  media <- soma / tamanho&#10;  return(media)&#10;}&#10;&#10;dados <- c(10, 20, 30, 40, 50)&#10;resultado <- calcular_media_movel(dados, 2)&#10;print(resultado)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>15_expressividade</h4>
+                    <code>v <- c(1, 2, 3, 4)
+print(v^2)
+
+numeros <- c(1, 2, 3, 4)
+quadrados <- numeros^2
+print(quadrados)
+
+calcular_area_circulo <- function(raio) {
+  pi_valor <- 3.14159
+  area <- pi_valor * raio^2
+  return(area)
+}
+
+raio_cm <- 5
+area_cm2 <- calcular_area_circulo(raio_cm)
+print(area_cm2)</code>
+                    <button class="btn-load-example" data-code="v <- c(1, 2, 3, 4)&#10;print(v^2)&#10;&#10;numeros <- c(1, 2, 3, 4)&#10;quadrados <- numeros^2&#10;print(quadrados)&#10;&#10;calcular_area_circulo <- function(raio) {&#10;  pi_valor <- 3.14159&#10;  area <- pi_valor * raio^2&#10;  return(area)&#10;}&#10;&#10;raio_cm <- 5&#10;area_cm2 <- calcular_area_circulo(raio_cm)&#10;print(area_cm2)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>16_identacao</h4>
+                    <code>for (i in 1:3) {
+  print(i)
+}
+
+for (i in 1:5) {
+  if (i > 2) {
+    print(i)
+  }
+}
+
+processar_dados <- function(valores) {
+  resultado <- c()
+  for (v in valores) {
+    if (v > 0) {
+      resultado <- c(resultado, v * 2)
+    }
+  }
+  return(resultado)
+}
+
+dados <- c(1, 2, 3, 4, 5)
+saida <- processar_dados(dados)
+print(saida)</code>
+                    <button class="btn-load-example" data-code="for (i in 1:3) {&#10;  print(i)&#10;}&#10;&#10;for (i in 1:5) {&#10;  if (i > 2) {&#10;    print(i)&#10;  }&#10;}&#10;&#10;processar_dados <- function(valores) {&#10;  resultado <- c()&#10;  for (v in valores) {&#10;    if (v > 0) {&#10;      resultado <- c(resultado, v * 2)&#10;    }&#10;  }&#10;  return(resultado)&#10;}&#10;&#10;dados <- c(1, 2, 3, 4, 5)&#10;saida <- processar_dados(dados)&#10;print(saida)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>17_comentarios</h4>
+                    <code>notas <- c(7, 8, 9, 5)
+media <- mean(notas)
+print(media)
+
+classificar_numero <- function(n) {
+  if (n > 0) {
+    return("Positivo")
+  } else if (n < 0) {
+    return("Negativo")
+  } else {
+    return("Zero")
+  }
+}
+
+print(classificar_numero(10))
+print(classificar_numero(-5))
+print(classificar_numero(0))
+
+celsius <- c(0, 10, 20, 30)
+fahrenheit <- celsius * 9 / 5 + 32
+print(fahrenheit)</code>
+                    <button class="btn-load-example" data-code="notas <- c(7, 8, 9, 5)&#10;media <- mean(notas)&#10;print(media)&#10;&#10;classificar_numero <- function(n) {&#10;  if (n > 0) {&#10;    return(&quot;Positivo&quot;)&#10;  } else if (n < 0) {&#10;    return(&quot;Negativo&quot;)&#10;  } else {&#10;    return(&quot;Zero&quot;)&#10;  }&#10;}&#10;&#10;print(classificar_numero(10))&#10;print(classificar_numero((-5)))&#10;print(classificar_numero(0))&#10;&#10;celsius <- c(0, 10, 20, 30)&#10;fahrenheit <- celsius * 9 / 5 + 32&#10;print(fahrenheit)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>18_nomenclatura</h4>
+                    <code>x <- c(1, 2, 3)
+y <- x * 2
+print(y)
+
+valores_iniciais <- c(1, 2, 3)
+valores_dobrados <- valores_iniciais * 2
+print(valores_dobrados)
+
+calcular_desconto <- function(preco_original, percentual_desconto) {
+  valor_desconto <- preco_original * percentual_desconto / 100
+  preco_final <- preco_original - valor_desconto
+  return(preco_final)
+}
+
+preco_produto <- 100
+desconto_percentual <- 10
+preco_com_desconto <- calcular_desconto(preco_produto, desconto_percentual)
+print(preco_com_desconto)</code>
+                    <button class="btn-load-example" data-code="x <- c(1, 2, 3)&#10;y <- x * 2&#10;print(y)&#10;&#10;valores_iniciais <- c(1, 2, 3)&#10;valores_dobrados <- valores_iniciais * 2&#10;print(valores_dobrados)&#10;&#10;calcular_desconto <- function(preco_original, percentual_desconto) {&#10;  valor_desconto <- preco_original * percentual_desconto / 100&#10;  preco_final <- preco_original - valor_desconto&#10;  return(preco_final)&#10;}&#10;&#10;preco_produto <- 100&#10;desconto_percentual <- 10&#10;preco_com_desconto <- calcular_desconto(preco_produto, desconto_percentual)&#10;print(preco_com_desconto)&#10;&#10;notas_alunos <- c(8.5, 9.0, 7.5, 8.0)&#10;media_da_turma <- mean(notas_alunos)&#10;print(media_da_turma)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>19_organizacao</h4>
+                    <code>calcular_dobro <- function(vetor) {
+  return(vetor * 2)
+}
+
+calcular_triplo <- function(vetor) {
+  return(vetor * 3)
+}
+
+calcular_soma <- function(a, b) {
+  return(a + b)
+}
+
+valores <- c(1, 2, 3)
+numero1 <- 10
+numero2 <- 20
+
+resultado_dobro <- calcular_dobro(valores)
+print(resultado_dobro)
+
+resultado_triplo <- calcular_triplo(valores)
+print(resultado_triplo)
+
+resultado_soma <- calcular_soma(numero1, numero2)
+print(resultado_soma)</code>
+                    <button class="btn-load-example" data-code="calcular_dobro <- function(vetor) {&#10;  return(vetor * 2)&#10;}&#10;&#10;calcular_triplo <- function(vetor) {&#10;  return(vetor * 3)&#10;}&#10;&#10;calcular_soma <- function(a, b) {&#10;  return(a + b)&#10;}&#10;&#10;valores <- c(1, 2, 3)&#10;numero1 <- 10&#10;numero2 <- 20&#10;&#10;resultado_dobro <- calcular_dobro(valores)&#10;print(resultado_dobro)&#10;&#10;resultado_triplo <- calcular_triplo(valores)&#10;print(resultado_triplo)&#10;&#10;resultado_soma <- calcular_soma(numero1, numero2)&#10;print(resultado_soma)&#10;&#10;dobrados <- calcular_dobro(valores)&#10;triplicados <- calcular_triplo(valores)&#10;soma_final <- calcular_soma(sum(dobrados), sum(triplicados))&#10;print(soma_final)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>20_paradigmas</h4>
+                    <code>soma_total <- 0&#10;for (i in 1:5) {&#10;  soma_total <- soma_total + i&#10;}&#10;print(paste("Soma total (procedural):", soma_total))&#10;&#10;numeros <- c(1, 2, 3, 4)&#10;quadrados <- sapply(numeros, function(x) x^2)&#10;print(paste("Quadrados (funcional):", paste(quadrados, collapse=", ")))&#10;&#10;dobro <- function(x) x*2&#10;print(dobro(5))&#10;&#10;pessoa <- list(nome="Paulo", idade=25)&#10;class(pessoa) <- "Pessoa"&#10;print(paste("Objeto S3:", pessoa$nome, "-", pessoa$idade))&#10;&#10;library(parallel)&#10;cl <- makeCluster(2)&#10;resultado <- parLapply(cl, 1:4, function(x) x^2)&#10;stopCluster(cl)&#10;print(paste("Resultado (paralelo):", paste(unlist(resultado), collapse=", ")))</code>
+                    <button class="btn-load-example" data-code="soma_total <- 0&#10;for (i in 1:5) {&#10;  soma_total <- soma_total + i&#10;}&#10;print(paste(&quot;Soma total (procedural):&quot;, soma_total))&#10;&#10;numeros <- c(1, 2, 3, 4)&#10;quadrados <- sapply(numeros, function(x) x^2)&#10;print(paste(&quot;Quadrados (funcional):&quot;, paste(quadrados, collapse=&quot;, &quot;)))&#10;&#10;dobro <- function(x) x*2&#10;print(dobro(5))&#10;&#10;pessoa <- list(nome=&quot;Paulo&quot;, idade=25)&#10;class(pessoa) <- &quot;Pessoa&quot;&#10;print(paste(&quot;Objeto S3:&quot;, pessoa$nome, &quot;-&quot;, pessoa$idade))&#10;&#10;library(parallel)&#10;cl <- makeCluster(2)&#10;resultado <- parLapply(cl, 1:4, function(x) x^2)&#10;stopCluster(cl)&#10;print(paste(&quot;Resultado (paralelo):&quot;, paste(unlist(resultado), collapse=&quot;, &quot;)))">Carregar</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Info Section -->
+        <section class="info-section">
+            <h3>ℹ️ Informações</h3>
+            <p>Este transpilador converte código R para Julia, suportando:</p>
+            <ul>
+                <li>✅ Variáveis e atribuições</li>
+                <li>✅ Funções e loops</li>
+                <li>✅ Operações matemáticas</li>
+                <li>✅ Vetores e acesso por índice</li>
+                <li>✅ Estruturas condicionais (if/else)</li>
+                <li>✅ Operadores lógicos e comparação</li>
+            </ul>
+            <p class="note">⚠️ Versão JavaScript pura - roda completamente no navegador, sem necessidade de servidor!</p>
+        </section>
+
+        <!-- Documentation Section -->
+        <section class="documentation-section">
+            <h2>📚 Documentação Técnica do Transpilador</h2>
+            
+            <div class="doc-tabs">
+                <button class="doc-tab-btn active" data-tab="visao-geral">Visão Geral</button>
+                <button class="doc-tab-btn" data-tab="tokenizer">Tokenizador</button>
+                <button class="doc-tab-btn" data-tab="parser">Parser</button>
+                <button class="doc-tab-btn" data-tab="codegen">Geração</button>
+                <button class="doc-tab-btn" data-tab="exemplo-real">Exemplo Real</button>
+            </div>
+
+            <!-- Visão Geral -->
+            <div class="doc-tab-content active" id="visao-geral">
+                <h3>🔍 Arquitetura do Transpilador Real</h3>
+                
+                <p>Este projeto contém um transpilador <strong>JavaScript puro</strong> implementado na classe <code>RtoJuliaTranspiler</code> (em <code>static/transpiler.js</code>).</p>
+
+                <h4>Estrutura Principal</h4>
+                <pre><code>class RtoJuliaTranspiler {
+  transpile(rCode)           // Função principal
+  tokenize(code)             // Fase 1: Análise Léxica
+  parseProgram()             // Fase 2: Análise Sintática
+  analyzeAndTransform(ast)   // Fase 3: Análise Semântica
+  generateCode(ast)          // Fase 4: Geração de Código Julia
+}</code></pre>
+
+                <h4>Fluxo de Transpilação</h4>
+                <pre><code>transpile(código R)
+    ↓
+1. tokenize() → Lista de Tokens
+    ↓
+2. parseProgram() → AST (Árvore de Sintaxe Abstrata)
+    ↓
+3. analyzeAndTransform() → Análise Semântica e Transformações
+    ↓
+4. generateCode() → Código Julia
+</code></pre>
+
+                <h4>Características Especiais Implementadas</h4>
+                <ul>
+                    <li><strong>Detecção de Escopo Global:</strong> Identifica variáveis globais modificadas em loops para adicionar <code>global</code> em Julia</li>
+                    <li><strong>Broadcasting Automático:</strong> Converte <code>v^2</code> para <code>v.^2</code> (multiplicação elemento a elemento)</li>
+                    <li><strong>Importação Automática:</strong> Detecta funções usadas (mean, sum) e gera imports Julia necessários</li>
+                    <li><strong>Mapeamento de Funções:</strong> Traduz funções R para equivalentes Julia (paste→string, nchar→length)</li>
+                    <li><strong>Conversão de Estruturas:</strong> Detecta quando um vetor deve ser um Dict (por indexação com strings)</li>
+                </ul>
+            </div>
+
+            <!-- Tokenizador -->
+            <div class="doc-tab-content" id="tokenizer">
+                <h3>🔤 Tokenizador (Análise Léxica)</h3>
+                
+                <p>Localização: <code>RtoJuliaTranspiler.tokenize(code)</code> (linhas ~165-280)</p>
+                
+                <h4>Tipos de Tokens Suportados</h4>
+                <table class="token-table">
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Padrão</th>
+                            <th>Exemplos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>INT</code></td>
+                            <td><code>/\d+/</code></td>
+                            <td>42, 0, 999</td>
+                        </tr>
+                        <tr>
+                            <td><code>FLOAT</code></td>
+                            <td><code>/\d+\.\d+/</code></td>
+                            <td>3.14, 0.5</td>
+                        </tr>
+                        <tr>
+                            <td><code>STRING</code></td>
+                            <td><code>/"[^"]*"|'[^']*'/</code></td>
+                            <td>"ola", 'mundo'</td>
+                        </tr>
+                        <tr>
+                            <td><code>ID</code></td>
+                            <td><code>/[a-zA-Z_]\w*/</code></td>
+                            <td>x, variavel_1</td>
+                        </tr>
+                        <tr>
+                            <td><code>ASSIGN</code></td>
+                            <td><code><-</code> ou <code>=</code></td>
+                            <td><-, =</td>
+                        </tr>
+                        <tr>
+                            <td><code>LPAREN</code></td>
+                            <td><code>(</code></td>
+                            <td>( para chamadas de função</td>
+                        </tr>
+                        <tr>
+                            <td><code>RPAREN</code></td>
+                            <td><code>)</code></td>
+                            <td>) fecha parenteses</td>
+                        </tr>
+                        <tr>
+                            <td><code>LBRACKET</code></td>
+                            <td><code>[</code></td>
+                            <td>[ para acesso a índice</td>
+                        </tr>
+                        <tr>
+                            <td><code>RBRACKET</code></td>
+                            <td><code>]</code></td>
+                            <td>] fecha colchete</td>
+                        </tr>
+                        <tr>
+                            <td><code>LBRACE</code></td>
+                            <td><code>{</code></td>
+                            <td>{ para blocos</td>
+                        </tr>
+                        <tr>
+                            <td><code>RBRACE</code></td>
+                            <td><code>}</code></td>
+                            <td>} fecha bloco</td>
+                        </tr>
+                        <tr>
+                            <td><code>COMMA</code></td>
+                            <td><code>,</code></td>
+                            <td>separador de argumentos</td>
+                        </tr>
+                        <tr>
+                            <td><code>PLUS</code></td>
+                            <td><code>+</code></td>
+                            <td>adição ou concatenação</td>
+                        </tr>
+                        <tr>
+                            <td><code>MINUS</code></td>
+                            <td><code>-</code></td>
+                            <td>subtração ou negação</td>
+                        </tr>
+                        <tr>
+                            <td><code>MUL</code></td>
+                            <td><code>*</code></td>
+                            <td>multiplicação</td>
+                        </tr>
+                        <tr>
+                            <td><code>DIV</code></td>
+                            <td><code>/</code></td>
+                            <td>divisão</td>
+                        </tr>
+                        <tr>
+                            <td><code>POW</code></td>
+                            <td><code>^</code></td>
+                            <td>potência</td>
+                        </tr>
+                        <tr>
+                            <td><code>MOD</code></td>
+                            <td><code>%%</code></td>
+                            <td>módulo em R</td>
+                        </tr>
+                        <tr>
+                            <td><code>IF</code></td>
+                            <td><code>if</code></td>
+                            <td>condicional</td>
+                        </tr>
+                        <tr>
+                            <td><code>ELSE</code></td>
+                            <td><code>else</code></td>
+                            <td>cláusula else</td>
+                        </tr>
+                        <tr>
+                            <td><code>FOR</code></td>
+                            <td><code>for</code></td>
+                            <td>loop for</td>
+                        </tr>
+                        <tr>
+                            <td><code>IN</code></td>
+                            <td><code>in</code></td>
+                            <td>iterador de loop</td>
+                        </tr>
+                        <tr>
+                            <td><code>WHILE</code></td>
+                            <td><code>while</code></td>
+                            <td>loop while</td>
+                        </tr>
+                        <tr>
+                            <td><code>FUNCTION</code></td>
+                            <td><code>function</code></td>
+                            <td>definição de função</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Exemplo de Tokenização</h4>
+                <pre><code>Entrada R:
+x <- 5 + 3
+
+Tokens produzidos:
+[
+  { type: 'ID', value: 'x' },
+  { type: 'ASSIGN', value: '<-' },
+  { type: 'INT', value: '5' },
+  { type: 'PLUS', value: '+' },
+  { type: 'INT', value: '3' },
+  { type: 'NEWLINE', value: '\\n' }
+]</code></pre>
+
+                <h4>Código do Tokenizador (Simplificado)</h4>
+                <pre><code>tokenize(code) {
+  const tokens = [];
+  let i = 0;
+  
+  while (i < code.length) {
+    // Pula espaços em branco
+    if (/[\t ]/.test(code[i])) { i++; continue; }
+    
+    // Processa números
+    if (/\d/.test(code[i])) {
+      let j = i;
+      while (j < code.length && /[0-9.]/.test(code[j])) j++;
+      tokens.push({ 
+        type: code[i] === '.' ? 'FLOAT' : 'INT', 
+        value: code.substring(i, j) 
+      });
+      i = j;
+      continue;
+    }
+    
+    // Processa strings
+    if (code[i] === '"' || code[i] === "'") {
+      let quote = code[i];
+      let j = i + 1;
+      let str = '';
+      while (j < code.length && code[j] !== quote) {
+        str += code[j];
+        j++;
+      }
+      tokens.push({ type: 'STRING', value: str });
+      i = j + 1;
+      continue;
+    }
+    
+    // Processa operadores e delimitadores
+    // ... (continua)
+  }
+  
+  return tokens;
+}</code></pre>
+            </div>
+
+            <!-- Parser -->
+            <div class="doc-tab-content" id="parser">
+                <h3>🌳 Parser (Análise Sintática)</h3>
+                
+                <p>Localização: <code>RtoJuliaTranspiler.parseProgram()</code> e métodos relacionados (linhas ~315-750)</p>
+
+                <h4>Gramática Simplificada (EBNF)</h4>
+                <pre><code>program         → statement*
+statement       → ifStatement | forLoop | whileLoop | functionDef | expression NEWLINE
+expression      → assignment | orExpression
+assignment      → ID ASSIGN orExpression
+                | ID LBRACKET ... RBRACKET ASSIGN orExpression
+                
+orExpression    → andExpression (PIPE andExpression)*
+andExpression   → comparison (AMP comparison)*
+comparison      → additive ((LT|GT|LE|GE|EQ|NE) additive)*
+additive        → multiplicative ((PLUS|MINUS) multiplicative)*
+multiplicative  → power ((MUL|DIV|MOD) power)*
+power           → unary (POW unary)*
+unary           → (NOT|MINUS)* primary
+primary         → NUMBER | STRING | ID
+                | functionCall
+                | LPAREN expression RPAREN
+                | vectorCreation
+
+vectorCreation  → ID LPAREN (expression (COMMA expression)*)? RPAREN
+functionCall    → ID LPAREN (expression (COMMA expression)*)? RPAREN
+functionDef     → FUNCTION LPAREN (ID (COMMA ID)*)? RPAREN LBRACE program RBRACE
+ifStatement     → IF LPAREN expression RPAREN block (ELSE block)?
+forLoop         → FOR LPAREN ID IN expression RPAREN block
+whileLoop       → WHILE LPAREN expression RPAREN block</code></pre>
+
+                <h4>Estrutura de Nós AST</h4>
+                <pre><code>// Nó base da árvore
+type Program = {
+  type: 'Program',
+  stmts: Statement[]
+}
+
+// Exemplos de nós específicos
+type Assignment = {
+  type: 'Assignment',
+  name: string,
+  expr: Expression
+}
+
+type BinaryOp = {
+  type: 'BinaryOp',
+  left: Expression,
+  operator: string,  // '+', '-', '*', '/', '^', '==', etc
+  right: Expression
+}
+
+type FunctionCall = {
+  type: 'FunctionCall',
+  name: string,
+  args: Expression[],
+  kwargs?: { [key: string]: Expression }
+}
+
+type IfStatement = {
+  type: 'IfStatement',
+  condition: Expression,
+  thenBranch: Statement[],
+  elseBranch?: Statement[]
+}
+
+type ForLoop = {
+  type: 'ForLoop',
+  variable: string,
+  iterable: Expression,
+  body: Statement[]
+}</code></pre>
+
+                <h4>Exemplo de Árvore Sintática Gerada</h4>
+                <pre><code>Código R:
+x <- 5
+if (x > 3) {
+  print(x)
+} else {
+  print(0)
+}
+
+AST resultante:
+Program {
+  stmts: [
+    Assignment {
+      name: 'x',
+      expr: NumberLiteral(5)
+    },
+    IfStatement {
+      condition: BinaryOp(
+        ID('x'),
+        '>',
+        NumberLiteral(3)
+      ),
+      thenBranch: [
+        ExpressionStatement {
+          expr: FunctionCall('print', [ID('x')])
+        }
+      ],
+      elseBranch: [
+        ExpressionStatement {
+          expr: FunctionCall('print', [NumberLiteral(0)])
+        }
+      ]
+    }
+  ]
+}</code></pre>
+
+                <h4>Precedência de Operadores</h4>
+                <table class="precedence-table">
+                    <thead>
+                        <tr>
+                            <th>Nível</th>
+                            <th>Operador</th>
+                            <th>Associatividade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1 (Maior)</td>
+                            <td>^ (Potência)</td>
+                            <td>Direita para Esquerda</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>*, /, %% (Multiplicação)</td>
+                            <td>Esquerda para Direita</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>+, - (Adição)</td>
+                            <td>Esquerda para Direita</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>&lt;, &gt;, &lt;=, &gt;=, ==, != (Comparação)</td>
+                            <td>Esquerda para Direita</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td>&amp; (AND Lógico)</td>
+                            <td>Esquerda para Direita</td>
+                        </tr>
+                        <tr>
+                            <td>6 (Menor)</td>
+                            <td>| (OR Lógico)</td>
+                            <td>Esquerda para Direita</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Geração de Código -->
+            <div class="doc-tab-content" id="codegen">
+                <h3>⚙️ Geração de Código Julia</h3>
+                
+                <p>Localização: <code>RtoJuliaTranspiler.generateCode(ast)</code> (linhas ~750-1100)</p>
+
+                <h4>Mapeamento de Construtos R → Julia</h4>
+                <table class="mapping-table">
+                    <thead>
+                        <tr>
+                            <th>Construto R</th>
+                            <th>Gerado em Julia</th>
+                            <th>Razão</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>&lt;-</code> ou <code>=</code></td>
+                            <td><code>=</code></td>
+                            <td>Julia usa = para atribuição</td>
+                        </tr>
+                        <tr>
+                            <td><code>c(1,2,3)</code></td>
+                            <td><code>[1, 2, 3]</code></td>
+                            <td>Sintaxe de vetor Julia</td>
+                        </tr>
+                        <tr>
+                            <td><code>v[i]</code></td>
+                            <td><code>v[i]</code></td>
+                            <td>Idêntico (Julia é 1-indexado como R)</td>
+                        </tr>
+                        <tr>
+                            <td><code>v^2</code></td>
+                            <td><code>v.^2</code></td>
+                            <td>Broadcasting: operação elemento-a-elemento</td>
+                        </tr>
+                        <tr>
+                            <td><code>v*2</code></td>
+                            <td><code>v.*2</code></td>
+                            <td>Broadcasting para operadores vetorizados</td>
+                        </tr>
+                        <tr>
+                            <td><code>v+a</code></td>
+                            <td><code>v.+a</code></td>
+                            <td>Broadcasting para adição vetorizada</td>
+                        </tr>
+                        <tr>
+                            <td><code>print(x)</code></td>
+                            <td><code>println(x)</code></td>
+                            <td>Julia usa println para saída com quebra de linha</td>
+                        </tr>
+                        <tr>
+                            <td><code>paste(a,b)</code></td>
+                            <td><code>string(a,b)</code></td>
+                            <td>Concatenação de strings</td>
+                        </tr>
+                        <tr>
+                            <td><code>nchar(s)</code></td>
+                            <td><code>length(s)</code></td>
+                            <td>Comprimento de string</td>
+                        </tr>
+                        <tr>
+                            <td><code>if(){} else {}</code></td>
+                            <td><code>if ... end; if ... else ... end</code></td>
+                            <td>Blocos com end em Julia</td>
+                        </tr>
+                        <tr>
+                            <td><code>for(i in 1:10){}</code></td>
+                            <td><code>for i in 1:10 ... end</code></td>
+                            <td>Sintaxe de loop Julia</td>
+                        </tr>
+                        <tr>
+                            <td><code>function(x){}</code></td>
+                            <td><code>function(x) ... end</code></td>
+                            <td>Definição de função Julia</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Detecção e Inserção de Imports</h4>
+                <pre><code>// Exemplo: Código R usa mean()
+numeros <- c(1, 2, 3, 4, 5)
+media <- mean(numeros)
+
+// Julia gerado:
+using Statistics  // ← Importação automática
+numeros = [1, 2, 3, 4, 5]
+media = mean(numeros)
+
+
+// Mapeamento de funções:
+'mean'     → 'Statistics'
+'median'   → 'Statistics'
+'std'      → 'Statistics'
+'var'      → 'Statistics'
+'quantile' → 'Statistics'
+'sort'     → 'Base'
+'reverse'  → 'Base'
+'unique'   → 'Base'</code></pre>
+
+                <h4>Broadcasting Automático</h4>
+                <pre><code>// Entrada R:
+v <- c(1, 2, 3)
+resultado <- v^2
+
+// Saída Julia (com broadcasting):
+v = [1, 2, 3]
+resultado = v.^2
+
+
+// O transpilador detecta:
+if (operador em [+,-,*,/] E right é vetor)
+  then adiciona ponto antes do operador
+  
+Exemplos:
+v * 2    → v .* 2
+v + 1    → v .+ 1
+v / 2    → v ./ 2
+v ^ 3    → v .^ 3</code></pre>
+            </div>
+
+            <!-- Exemplo Real -->
+            <div class="doc-tab-content" id="exemplo-real">
+                <h3>📝 Exemplo Real de Transpilação</h3>
+
+                <h4>Código R de Entrada</h4>
+                <pre><code>soma_total <- 0
+for (i in 1:5) {
+  soma_total <- soma_total + i
+}
+print(soma_total)</code></pre>
+
+                <h4>Fase 1: Tokenização</h4>
+                <pre><code>[
+  {type: 'ID', value: 'soma_total'},
+  {type: 'ASSIGN', value: '<-'},
+  {type: 'INT', value: '0'},
+  {type: 'NEWLINE'},
+  {type: 'FOR'},
+  {type: 'LPAREN'},
+  {type: 'ID', value: 'i'},
+  {type: 'IN'},
+  {type: 'INT', value: '1'},
+  {type: 'COLON'},
+  {type: 'INT', value: '5'},
+  {type: 'RPAREN'},
+  {type: 'LBRACE'},
+  {type: 'ID', value: 'soma_total'},
+  {type: 'ASSIGN', value: '<-'},
+  {type: 'ID', value: 'soma_total'},
+  {type: 'PLUS'},
+  {type: 'ID', value: 'i'},
+  {type: 'RBRACE'},
+  {type: 'ID', value: 'print'},
+  {type: 'LPAREN'},
+  {type: 'ID', value: 'soma_total'},
+  {type: 'RPAREN'}
+]</code></pre>
+
+                <h4>Fase 2: Parsing (AST)</h4>
+                <pre><code>Program {
+  stmts: [
+    ExpressionStatement {
+      expr: Assignment {
+        name: 'soma_total',
+        expr: NumberLiteral(0)
+      }
+    },
+    ForLoop {
+      variable: 'i',
+      iterable: Range(1, 5),
+      body: [
+        ExpressionStatement {
+          expr: Assignment {
+            name: 'soma_total',
+            expr: BinaryOp(
+              ID('soma_total'),
+              '+',
+              ID('i')
+            )
+          }
+        }
+      ]
+    },
+    ExpressionStatement {
+      expr: FunctionCall('print', [ID('soma_total')])
+    }
+  ]
+}</code></pre>
+
+                <h4>Fase 3: Análise Semântica</h4>
+                <pre><code>Detecta:
+- soma_total é definido no escopo global (linha 1)
+- soma_total é modificado dentro do loop (linha 4)
+- Conclusão: Precisa de 'global soma_total' no loop Julia</code></pre>
+
+                <h4>Fase 4: Geração de Código Julia</h4>
+                <pre><code>soma_total = 0
+for i in 1:5
+    global soma_total
+    soma_total = soma_total + i
+end
+println(soma_total)</code></pre>
+
+                <h4>Comparação: R vs Julia</h4>
+                <table class="mapping-table">
+                    <thead>
+                        <tr>
+                            <th>R</th>
+                            <th>Julia</th>
+                            <th>Diferença</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code><-</code></td>
+                            <td><code>=</code></td>
+                            <td>Sintaxe de atribuição</td>
+                        </tr>
+                        <tr>
+                            <td><code>for (i in 1:5)</code></td>
+                            <td><code>for i in 1:5</code></td>
+                            <td>Sintaxe de loop</td>
+                        </tr>
+                        <tr>
+                            <td><code>{...}</code></td>
+                            <td><code>...end</code></td>
+                            <td>Julia não usa chaves, usa end</td>
+                        </tr>
+                        <tr>
+                            <td>Escopo dinâmico</td>
+                            <td><code>global</code> explícito</td>
+                            <td>Julia é mais estrito com escopos</td>
+                        </tr>
+                        <tr>
+                            <td><code>print()</code></td>
+                            <td><code>println()</code></td>
+                            <td>Julia usa println para quebra de linha</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Resultado Final</h4>
+                <p>Ambos os códigos fazem exatamente a mesma coisa:</p>
+                <pre><code>1. Inicializa soma_total com 0
+2. Loop de i=1 até 5
+3. Adiciona i a soma_total em cada iteração
+4. Imprime o resultado final: 15</code></pre>
+            </div>
+                <h3>🔤 Análise Léxica (Lexer)</h3>
+                
+                <p>A análise léxica quebra o código em <strong>tokens</strong> (pequenas unidades significativas).</p>
+
+                <h4>Tipos de Tokens Reconhecidos</h4>
+                <table class="token-table">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Padrão (Expressão Regular)</th>
+                            <th>Exemplos</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>NÚMERO</strong></td>
+                            <td><code>/\d+(\.\d+)?/</code></td>
+                            <td>42, 3.14, 0, 999</td>
+                        </tr>
+                        <tr>
+                            <td><strong>STRING</strong></td>
+                            <td><code>/"[^"]*"|'[^']*'/</code></td>
+                            <td>"ola", 'mundo'</td>
+                        </tr>
+                        <tr>
+                            <td><strong>IDENTIFICADOR</strong></td>
+                            <td><code>/[a-zA-Z_]\w*/</code></td>
+                            <td>x, variavel_1, nome</td>
+                        </tr>
+                        <tr>
+                            <td><strong>OPERADOR</strong></td>
+                            <td><code>/[\+\-\*/%^<>=!&|]/</code></td>
+                            <td>+, -, *, /, ^, ==, !=</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ATRIBUIÇÃO</strong></td>
+                            <td><code>/<-|=/</code></td>
+                            <td><-,  =</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DELIMITADOR</strong></td>
+                            <td><code>/[()[\]{}]/</code></td>
+                            <td>( ) [ ] { }</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SEPARADOR</strong></td>
+                            <td><code>/[,;]/</code></td>
+                            <td>, ;</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Exemplo de Tokenização</h4>
+                <pre><code>Código:    numeros <- c(1, 2, 3)
+
+Tokens:    [ID:numeros] [OP:<-] [ID:c] [OP:(] [NUM:1] [OP:,] [NUM:2] [OP:,] [NUM:3] [OP:)]</code></pre>
+
+                <h4>Expressões Regulares Utilizadas</h4>
+                <pre><code class="regex">// Números inteiros e decimais
+/\d+(\.\d+)?/
+
+// Identificadores (variáveis, funções)
+/[a-zA-Z_][a-zA-Z0-9_]*/
+
+// Strings entre aspas duplas ou simples
+/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/
+
+// Operadores aritméticos e lógicos
+/(\+|-|\*|\/|%|\^|==|!=|<=|>=|<|>|&|\||!)/
+
+// Atribuição em R (<-) e Julia (=)
+/(<-|=)/
+
+// Delimitadores
+/[()[\]{}]/</code></pre>
+            </div>
+
+            <!-- Análise Sintática -->
+            <div class="doc-tab-content" id="parser">
+                <h3>🌳 Análise Sintática (Parser)</h3>
+                
+                <p>O <strong>parser</strong> pega os tokens e cria uma <strong>Árvore Sintática Abstrata (AST)</strong> que representa a estrutura do programa.</p>
+
+                <h4>Gramática Simplificada (EBNF)</h4>
+                <pre><code class="grammar">program         → statement*
+statement       → assignment | ifStatement | forLoop | whileLoop | expression
+assignment      → ID ('<-'|'=') expression
+expression      → term (('+' | '-') term)*
+term            → factor (('*' | '/' | '%' | '^') factor)*
+factor          → NUMBER | STRING | ID | functionCall | '(' expression ')'
+ifStatement     → 'if' '(' expression ')' '{' program '}' ('else' '{' program '}')?
+forLoop         → 'for' '(' ID 'in' expression ')' '{' program '}'
+whileLoop       → 'while' '(' expression ')' '{' program '}'
+functionCall    → ID '(' (expression (',' expression)*)? ')'</code></pre>
+
+                <h4>Exemplo de Árvore Sintática</h4>
+                <pre><code>Código:
+if (x > 5) {
+  y <- x * 2
+} else {
+  y <- x + 1
+}
+
+AST:
+IfStatement
+├── condition: BinaryOp(ID:x, >, NUM:5)
+├── thenBlock: [Assignment(ID:y, BinaryOp(ID:x, *, NUM:2))]
+└── elseBlock: [Assignment(ID:y, BinaryOp(ID:x, +, NUM:1))]</code></pre>
+
+                <h4>Precedência de Operadores</h4>
+                <table class="precedence-table">
+                    <thead>
+                        <tr>
+                            <th>Nível</th>
+                            <th>Operador</th>
+                            <th>Associatividade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1 (Maior)</td>
+                            <td>^ (Potência)</td>
+                            <td>Direita para esquerda</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>*, /, % (Mult/Div)</td>
+                            <td>Esquerda para direita</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>+, - (Adi/Sub)</td>
+                            <td>Esquerda para direita</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>&lt;, &gt;, ==, != (Comparação)</td>
+                            <td>Esquerda para direita</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td>& (AND lógico)</td>
+                            <td>Esquerda para direita</td>
+                        </tr>
+                        <tr>
+                            <td>6 (Menor)</td>
+                            <td>| (OR lógico)</td>
+                            <td>Esquerda para direita</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Tipos de Nós da AST</h4>
+                <pre><code>// Nós núcleo
+class Program { statements: Statement[] }
+class Statement { /* abstrato */ }
+class Expression { /* abstrato */ }
+
+// Nós específicos
+class Assignment extends Statement {
+  variable: string
+  value: Expression
+}
+
+class BinaryOp extends Expression {
+  left: Expression
+  operator: string
+  right: Expression
+}
+
+class FunctionCall extends Expression {
+  name: string
+  arguments: Expression[]
+}
+
+class IfStatement extends Statement {
+  condition: Expression
+  thenBlock: Statement[]
+  elseBlock: Statement[]
+}</code></pre>
+            </div>
+
+            <!-- Geração de Código -->
+            <div class="doc-tab-content" id="codegen">
+                <h3>⚙️ Geração de Código (Code Generator)</h3>
+                
+                <p>O <strong>code generator</strong> percorre a AST e gera código Julia equivalente.</p>
+
+                <h4>Mapeamento de Construtos R → Julia</h4>
+                <table class="mapping-table">
+                    <thead>
+                        <tr>
+                            <th>Construto R</th>
+                            <th>Julia Equivalente</th>
+                            <th>Notas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code><-</code> (atribuição)</td>
+                            <td><code>=</code></td>
+                            <td>Julia usa = para atribuição</td>
+                        </tr>
+                        <tr>
+                            <td><code>c(1,2,3)</code></td>
+                            <td><code>[1,2,3]</code></td>
+                            <td>Criação de vetores</td>
+                        </tr>
+                        <tr>
+                            <td><code>v[i]</code></td>
+                            <td><code>v[i]</code></td>
+                            <td>Acesso idêntico (Julia é 1-indexado)</td>
+                        </tr>
+                        <tr>
+                            <td><code>v^2</code></td>
+                            <td><code>v.^2</code></td>
+                            <td>Broadcasting em Julia</td>
+                        </tr>
+                        <tr>
+                            <td><code>v*2</code></td>
+                            <td><code>v.*2</code></td>
+                            <td>Operadores vetorizados com ponto</td>
+                        </tr>
+                        <tr>
+                            <td><code>function(x) {...}</code></td>
+                            <td><code>function(x)\n...\nend</code></td>
+                            <td>Sintaxe de funções</td>
+                        </tr>
+                        <tr>
+                            <td><code>if (...) {} else {}</code></td>
+                            <td><code>if ... else ... end</code></td>
+                            <td>Blocos com end em Julia</td>
+                        </tr>
+                        <tr>
+                            <td><code>for (i in 1:10) {}</code></td>
+                            <td><code>for i in 1:10 ... end</code></td>
+                            <td>Loops com end</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h4>Algoritmo de Geração (Pseudo-código)</h4>
+                <pre><code>function generate(node):
+  if node is Program:
+    return join(generate(stmt) for stmt in statements)
+  
+  if node is Assignment:
+    return generate(variable) + " = " + generate(value)
+  
+  if node is BinaryOp:
+    left = generate(left)
+    right = generate(right)
+    // Broadcasting para operadores vetorizados
+    if operator in [+, -, *, /]:
+      return "(" + left + " ." + operator + " " + right + ")"
+    else:
+      return "(" + left + " " + operator + " " + right + ")"
+  
+  if node is FunctionCall:
+    args = join(generate(arg) for arg in arguments)
+    return mapFunction(name) + "(" + args + ")"
+  
+  if node is IfStatement:
+    return "if " + generate(condition) + "\n" +
+           generate(thenBlock) + "\n" +
+           (("else\n" + generate(elseBlock)) if elseBlock else "") +
+           "end"</code></pre>
+
+                <h4>Funções Mapeadas</h4>
+                <pre><code>Mapeamento de Funções Embutidas:
+R              Julia       Descrição
+────────────────────────────────────────
+print()    →   println()   Mostrar valor
+c()        →   [ ]         Criar vetor
+mean()     →   mean()      Média
+sum()      →   sum()       Soma
+length()   →   length()    Tamanho
+paste()    →   string()    Concatenar texto
+nchar()    →   length()    Tamanho da string
+sqrt()     →   sqrt()      Raiz quadrada
+abs()      →   abs()       Valor absoluto
+max()      →   maximum()   Máximo
+min()      →   minimum()   Mínimo</code></pre>
+            </div>
+
+            <!-- Autômatos -->
+            <div class="doc-tab-content" id="automato">
+                <h3>🤖 Autômatos e Máquinas de Estado</h3>
+                
+                <p>O transpilador usa <strong>autômatos finitos determinísticos (DFA)</strong> durante a análise léxica para reconhecer tokens.</p>
+
+                <h4>Autômato para Números</h4>
+                <pre><code>Estados: q0 (inicial), q1 (número), q2 (decimal), q_accept (aceito)
+
+      dígito        dígito    ponto    dígito
+q0 --------→ q1 --------→ q1 ------→ q2 --------→ q_accept
+(início)      (inteiro)        (decimal)
+
+Exemplo: entrada "123.45"
+q0 --1--> q1 --2--> q1 --3--> q1 --.--> q2 --4--> q2 --5--> q_accept ✓</code></pre>
+
+                <h4>Autômato para Identificadores</h4>
+                <pre><code>Estados: q0 (inicial), q1 (id), q_accept (aceito)
+
+      [a-zA-Z_]        [a-zA-Z0-9_]
+q0 ---------------→ q1 ---------------→ q1
+(início)           (letra/underscore)   (continua)
+
+Exemplo: entrada "variavel_1"
+q0 --v--> q1 --a--> q1 --r--> q1 ... --_--> q1 --1--> q1 ✓</code></pre>
+
+                <h4>Autômato para Strings</h4>
+                <pre><code>Estados: q0, q1 (em string), q_accept (fechada)
+
+      "              [^"]           "
+q0 ------→ q1 --------→ q1 -------→ q_accept
+(início)  (abre)    (caracteres)   (fecha)
+
+Exemplo: entrada "ola mundo"
+q0 --"→ q1 --o--> q1 --l--> q1 --a--> q1 -- --> q1 --m--> q1 ... --"--> q_accept ✓</code></pre>
+
+                <h4>Diagrama de Estados do Parser (Simplificado)</h4>
+                <pre><code>                    ID/<-/=
+                    ↓
+START → EXPECT_ID → EXPECT_ASSIGN → EXPECT_EXPR → DONE
+                                          ↓
+                                    (operador/expr)
+
+Transições:
+                <h4>Resultado Final</h4>
+                <p>Ambos os códigos fazem exatamente a mesma coisa:</p>
+                <pre><code>1. Inicializa soma_total com 0
+2. Loop de i=1 até 5
+3. Adiciona i a soma_total em cada iteração
+4. Imprime o resultado final: 15</code></pre>
+            </div>
+        </section>
+    </div>
+
+    <script src="static/transpiler.js"></script>
+    <script>
+        // DOM Elements
+        const rCodeInput = document.getElementById('rCode');
+        const juliaCodeOutput = document.getElementById('juliaCode');
+        const transpileBtn = document.getElementById('transpileBtn');
+        const clearRBtn = document.getElementById('clearRBtn');
+        const copyJuliaBtn = document.getElementById('copyJuliaBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const exampleButtons = document.querySelectorAll('.btn-load-example');
+
+        // Initialize transpiler
+        const transpiler = new RtoJuliaTranspiler();
+
+        // Event Listeners
+        transpileBtn.addEventListener('click', transpileCode);
+        clearRBtn.addEventListener('click', clearRCode);
+        copyJuliaBtn.addEventListener('click', copyToClipboard);
+
+        // Load example code when clicking example buttons
+        exampleButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const code = btn.getAttribute('data-code');
+                rCodeInput.value = code;
+                transpileCode();
+            });
+        });
+
+        // Auto-transpile on Enter (Ctrl+Enter)
+        rCodeInput.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                transpileCode();
+            }
+        });
+
+        /**
+         * Transpile R code to Julia
+         */
+        function transpileCode() {
+            const rCode = rCodeInput.value.trim();
+            
+            if (!rCode) {
+                showError('Por favor, digite algum código R para transpilar');
+                return;
+            }
+
+            // Show loading state
+            transpileBtn.classList.add('loading');
+            hideError();
+
+            try {
+                // Check if it's example 20 (paradigmas funcionales)
+                if (rCode.includes('sapply') && rCode.includes('library(parallel)')) {
+                    juliaCodeOutput.textContent = 'ℹ️ Este código excede a capacidade atual do transpilador.\n\nO exemplo demonstra múltiplos paradigmas de programação (imperativo, funcional, orientado a objetos, paralelo) que não são totalmente suportados.\nPara aprender as técnicas equivalentes em Julia, consulte a documentação oficial.';
+                    return;
+                }
+
+                // Check for unsupported features first
+                const unsupportedFeatures = checkUnsupportedFeatures(rCode);
+                if (unsupportedFeatures.length > 0) {
+                    let warningMsg = '⚠️ AVISO: Este código contém recursos não suportados pelo transpilador:\n\n';
+                    unsupportedFeatures.forEach((feature, idx) => {
+                        warningMsg += `${idx + 1}. ${feature}\n`;
+                    });
+                    warningMsg += '\nO transpilador pode gerar código incompleto ou com erros. Considere simplificar o código para usar apenas recursos suportados.';
+                    showError(warningMsg);
+                    juliaCodeOutput.textContent = 'Código não transpilável devido a recursos não suportados';
+                    return;
+                }
+
+                // Transpile using the JavaScript transpiler
+                const juliaCode = transpiler.transpile(rCode);
+                juliaCodeOutput.textContent = juliaCode;
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message || 'Erro ao transpilar o código');
+                juliaCodeOutput.textContent = 'Erro ao transpilar';
+            } finally {
+                transpileBtn.classList.remove('loading');
+            }
+        }
+
+        /**
+         * Check for unsupported R features
+         */
+        function checkUnsupportedFeatures(rCode) {
+            const unsupported = [];
+            
+            // Patterns for unsupported features
+            const unsupportedPatterns = [
+                { pattern: /library\s*\(\s*(?!base|stats)[a-zA-Z_]\w*\s*\)/gi, name: 'Bibliotecas externas (library)' },
+                { pattern: /install\.packages\s*\(/gi, name: 'Instalação de pacotes (install.packages)' },
+                { pattern: /require\s*\(/gi, name: 'Carregamento de pacotes (require)' },
+                { pattern: /source\s*\(/gi, name: 'Carregamento de arquivos (source)' },
+                { pattern: /sapply\s*\(/gi, name: 'Função sapply' },
+                { pattern: /lapply\s*\(/gi, name: 'Função lapply' },
+                { pattern: /mapply\s*\(/gi, name: 'Função mapply' },
+                { pattern: /apply\s*\(/gi, name: 'Função apply' },
+                { pattern: /Reduce\s*\(/gi, name: 'Função Reduce' },
+                { pattern: /Filter\s*\(/gi, name: 'Função Filter' },
+                { pattern: /Map\s*\(/gi, name: 'Função Map' },
+                { pattern: /%%\s*/gi, name: 'Operador módulo (%%))' },
+                { pattern: /\$\$/gi, name: 'Operador de escopo ($$)' },
+                { pattern: /<<-/gi, name: 'Atribuição global (<<-)' },
+                { pattern: /try\s*\(/gi, name: 'Tratamento de erros com try' },
+                { pattern: /tryCatch\s*\(/gi, name: 'Tratamento de erros com tryCatch' },
+                { pattern: /withCallingHandlers\s*\(/gi, name: 'withCallingHandlers' },
+                { pattern: /observeEvent\s*\(/gi, name: 'Eventos Shiny (observeEvent)' },
+                { pattern: /reactive\s*\(/gi, name: 'Reatividade Shiny (reactive)' },
+                { pattern: /shinyApp\s*\(/gi, name: 'Aplicação Shiny' },
+                { pattern: /makeCluster\s*\(/gi, name: 'Computação paralela (makeCluster)' },
+                { pattern: /parLapply\s*\(/gi, name: 'Computação paralela (parLapply)' },
+                { pattern: /stopCluster\s*\(/gi, name: 'Computação paralela (stopCluster)' },
+                { pattern: /data\.frame\s*\(/gi, name: 'DataFrame (data.frame)' },
+                { pattern: /read\.[a-z]+\s*\(/gi, name: 'Leitura de arquivos' },
+                { pattern: /write\.[a-z]+\s*\(/gi, name: 'Escrita de arquivos' },
+                { pattern: /setwd\s*\(/gi, name: 'Mudança de diretório (setwd)' },
+                { pattern: /getwd\s*\(/gi, name: 'Obtenção de diretório (getwd)' },
+            ];
+            
+            unsupportedPatterns.forEach(item => {
+                if (item.pattern.test(rCode)) {
+                    if (!unsupported.includes(item.name)) {
+                        unsupported.push(item.name);
+                    }
+                }
+            });
+            
+            return unsupported;
+        }
+
+        /**
+         * Clear R code input
+         */
+        function clearRCode() {
+            rCodeInput.value = '';
+            juliaCodeOutput.textContent = 'Clique em ⚡ para transpilar seu código R';
+            hideError();
+            rCodeInput.focus();
+        }
+
+        /**
+         * Copy Julia code to clipboard
+         */
+        function copyToClipboard() {
+            const juliaCode = juliaCodeOutput.textContent;
+            
+            if (!juliaCode || juliaCode === 'Clique em ⚡ para transpilar seu código R') {
+                showError('Não há código Julia para copiar. Transpile algo primeiro!');
+                return;
+            }
+
+            navigator.clipboard.writeText(juliaCode).then(() => {
+                // Show success message
+                const originalText = copyJuliaBtn.textContent;
+                copyJuliaBtn.textContent = '✓ Copiado!';
+                copyJuliaBtn.style.background = '#4caf50';
+                
+                setTimeout(() => {
+                    copyJuliaBtn.textContent = originalText;
+                    copyJuliaBtn.style.background = '';
+                }, 2000);
+            }).catch(() => {
+                showError('Erro ao copiar para a área de transferência');
+            });
+        }
+
+        /**
+         * Show error message
+         */
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+            errorMessage.style.display = 'block';
+            
+            // Auto-hide after 5 seconds
+            setTimeout(hideError, 5000);
+        }
+
+        /**
+         * Hide error message
+         */
+        function hideError() {
+            errorMessage.classList.remove('show');
+            errorMessage.style.display = 'none';
+        }
+
+        /**
+         * Documentation tabs functionality
+         */
+        document.querySelectorAll('.doc-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.getAttribute('data-tab');
+                
+                // Remove active from all buttons and contents
+                document.querySelectorAll('.doc-tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.doc-tab-content').forEach(c => c.classList.remove('active'));
+                
+                // Add active to clicked button and corresponding content
+                btn.classList.add('active');
+                const tabContent = document.getElementById(tabName);
+                if (tabContent) {
+                    tabContent.classList.add('active');
+                }
+            });
+        });
+
+        // Initialize
+        console.log('✅ Transpilador R → Julia carregado com sucesso!');
+    </script>
+</body>
+</html>

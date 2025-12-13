@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transpilador R → Julia</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔄 Transpilador R → Julia</h1>
+            <p class="subtitle">Converta código R para Julia instantaneamente</p>
+        </header>
+
+        <div class="editor-container">
+            <!-- R Code Editor -->
+            <div class="editor-panel">
+                <div class="panel-header">
+                    <h2>📝 Código R</h2>
+                    <button id="clearRBtn" class="btn-small">Limpar</button>
+                </div>
+                <textarea id="rCode" placeholder="Digite seu código R aqui...
+Exemplo:
+resultado &lt;- df %&gt;% 
+  filter(idade &gt; 20) %&gt;% 
+  select(nome)"></textarea>
+            </div>
+
+            <!-- Arrow Button -->
+            <div class="arrow-container">
+                <button id="transpileBtn" class="btn-transpile" title="Transpilar código">
+                    <span>⚡</span>
+                </button>
+            </div>
+
+            <!-- Julia Code Editor -->
+            <div class="editor-panel">
+                <div class="panel-header">
+                    <h2>💜 Código Julia</h2>
+                    <button id="copyJuliaBtn" class="btn-small">Copiar</button>
+                </div>
+                <pre><code id="juliaCode" class="language-julia">Clique em ⚡ para transpilar seu código R</code></pre>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+        <!-- Examples Section -->
+        <section class="examples-section">
+            <h3>📚 Exemplos</h3>
+            <div class="examples-grid">
+                <div class="example-card">
+                    <h4>Operações Básicas</h4>
+                    <code>x &lt;- 5
+y &lt;- 10
+z &lt;- x + y</code>
+                    <button class="btn-load-example" data-code="x <- 5
+y <- 10
+z <- x + y">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Vetores</h4>
+                    <code>v &lt;- c(1, 2, 3, 4, 5)
+media &lt;- mean(v)
+soma &lt;- sum(v)</code>
+                    <button class="btn-load-example" data-code="v <- c(1, 2, 3, 4, 5)
+media <- mean(v)
+soma <- sum(v)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Funções</h4>
+                    <code>quadrado &lt;- function(x) {
+  return(x * x)
+}
+resultado &lt;- quadrado(5)</code>
+                    <button class="btn-load-example" data-code="quadrado <- function(x) {
+  return(x * x)
+}
+resultado <- quadrado(5)">Carregar</button>
+                </div>
+                <div class="example-card">
+                    <h4>Loops</h4>
+                    <code>for (i in 1:10) {
+  print(i)
+}
+j &lt;- 1
+while (j &lt;= 5) {
+  j &lt;- j + 1
+}</code>
+                    <button class="btn-load-example" data-code="for (i in 1:10) {
+  print(i)
+}
+j <- 1
+while (j <= 5) {
+  j <- j + 1
+}">Carregar</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Info Section -->
+        <section class="info-section">
+            <h3>ℹ️ Informações</h3>
+            <p>Este transpilador converte código R para Julia, suportando:</p>
+            <ul>
+                <li>✅ Variáveis e atribuições</li>
+                <li>✅ Funções e loops</li>
+                <li>✅ Operações matemáticas</li>
+                <li>✅ Vetores e matrizes</li>
+                <li>✅ Estruturas condicionais (if/else)</li>
+            </ul>
+            <p class="note">⚠️ Algumas funcionalidades específicas do R (como pipes %&gt;%, S4 classes, etc) podem não ser suportadas.</p>
+        </section>
+    </div>
+
+    <script src="transpiler.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
