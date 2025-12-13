@@ -57,8 +57,8 @@ t_DOLLAR = r'\$'
 t_BACKTICK = r'`'
 
 # Logical operators
-t_AND = r'\&\&'
-t_OR = r'\|\|'
+t_AND = r'(&&|&)'   # casa && ou &
+t_OR  = r'(\|\||\|)' # casa || ou |
 t_NOT = r'!'
 
 # Ignore spaces and tabs (não newline)

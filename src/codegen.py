@@ -137,21 +137,29 @@ class JuliaCodeGen:
         return node.name
 
     def gen_UnaryOp(self, node):
+        expr_code = self.generate(node.expr)
         if node.op == "!":
-            return f"(!{self.generate(node.expr)})"
-        if node.op == "-":
-            return f"(-{self.generate(node.expr)})"
-        return f"{node.op}{self.generate(node.expr)}"
+            return f"(!{expr_code})"
+        elif node.op == "-":
+            return f"(-{expr_code})"
+        else:
+            return f"{node.op}{expr_code}"
+
+
 
     def gen_BinaryOp(self, node):
-        op = node.op
-        if op in ("&", "&&"):
-            op = "&&"
-        if op in ("|", "||"):
-            op = "||"
+        # Map operadores R → Julia
+        op_map = {"&": "&&", "|": "||", "&&": "&&", "||": "||", ":": ":"}
+        op = op_map.get(node.op, node.op)
+
+        left_code = self.generate(node.left)
+        right_code = self.generate(node.right)
+
         if op == ":":
-            return f"{self.generate(node.left)}:{self.generate(node.right)}"
-        return f"({self.generate(node.left)} {op} {self.generate(node.right)})"
+            return f"{left_code}:{right_code}"
+
+        return f"({left_code} {op} {right_code})"
+
 
     # ------------------- CALLS -------------------
     def gen_Call(self, node):
@@ -171,10 +179,17 @@ class JuliaCodeGen:
             arg = pos[0] if pos else ""
             return f"isdefined(Main, Symbol({arg}))"
 
-
         # Caso para print(x) → println(x)
         if name == "print":
             arg = pos[0] if pos else ""
+
+            # Se for print(paste(...))
+            if isinstance(node.args[0], Call) and node.args[0].name == "paste":
+                paste_args = [self.generate(a) for a in node.args[0].args]
+                # Em Julia, basta passar os argumentos separados por vírgula
+                return f"println({', '.join(paste_args)})"
+
+            # Caso normal
             return f"println({arg})"
 
         # Caso para c(...) → vetor numérico
