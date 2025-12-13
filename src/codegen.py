@@ -171,6 +171,7 @@ class JuliaCodeGen:
             arg = pos[0] if pos else ""
             return f"isdefined(Main, Symbol({arg}))"
 
+
         # Caso para print(x) → println(x)
         if name == "print":
             arg = pos[0] if pos else ""
@@ -236,21 +237,87 @@ class JuliaCodeGen:
         out.append("end")
         return "\n".join(out)
 
+    def _assigned_vars(self, block):
+        """
+        Retorna um set com os nomes das variáveis atribuídas no bloco.
+        """
+        vars_ = set()
+
+        for stmt in block.stmts:
+            if isinstance(stmt, Assign):
+                vars_.add(stmt.name)
+
+            if isinstance(stmt, If):
+                vars_ |= self._assigned_vars(stmt.then_block)
+                if stmt.else_block:
+                    vars_ |= self._assigned_vars(stmt.else_block)
+
+            if isinstance(stmt, While):
+                vars_ |= self._assigned_vars(stmt.body)
+
+            if isinstance(stmt, For):
+                vars_ |= self._assigned_vars(stmt.body)
+
+        return vars_
+
+
     def gen_While(self, node):
         cond = self.generate(node.cond)
 
+        assigned = self._assigned_vars(node.body)
+
+        if hasattr(node.cond, "left") and hasattr(node.cond.left, "name"):
+            assigned.add(node.cond.left.name)
+
+        # aumenta indentação para o corpo do while
         self.indent_level += 1
         body = self.gen_Block(node.body)
         self.indent_level -= 1
 
-        indent = "    " * (self.indent_level + 1)
+        if assigned:
+            lets = ", ".join(f"{v} = {v}" for v in sorted(assigned))
+            return "\n".join([
+                f"let {lets}",
+                f"    while {cond}",
+                body,
+                f"    end",
+                "end"
+            ])
 
         return "\n".join([
             f"while {cond}",
-            f"{indent}global x",
             body,
             "end"
         ])
+
+    def _body_assigns_var(self, block):
+        """
+        Retorna True se o corpo do while contém alguma atribuição (x = ...)
+        Isso indica mutação e exige escopo (let) em Julia.
+        """
+        for stmt in block.stmts:
+            # atribuição direta: x <- ...
+            if isinstance(stmt, Assign):
+                return True
+
+            # if dentro do while
+            if isinstance(stmt, If):
+                if self._body_assigns_var(stmt.then_block):
+                    return True
+                if stmt.else_block and self._body_assigns_var(stmt.else_block):
+                    return True
+
+            # while aninhado
+            if isinstance(stmt, While):
+                if self._body_assigns_var(stmt.body):
+                    return True
+
+            # for aninhado
+            if isinstance(stmt, For):
+                if self._body_assigns_var(stmt.body):
+                    return True
+
+        return False
 
 
     def gen_For(self, node):

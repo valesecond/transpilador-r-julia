@@ -6,10 +6,11 @@ elseif (x == 0)
 else
     println("negativo")
 end
-while true
-    global x
+let x = x
+    while true
         x = (x - 1)
         if (x == 0)
             break
 end
+    end
 end
